@@ -2,8 +2,9 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore, getIngredientById } from '@/store/useStore';
 import { Link } from 'react-router-dom';
-import { Clock, ChefHat, X, ChevronDown, ChevronUp, Filter, Sparkles, UtensilsCrossed, AlertCircle, Carrot } from 'lucide-react';
-import type { MatchedRecipe, FilterKey } from '@/types';
+import { Clock, ChefHat, X, ChevronDown, ChevronUp, Filter, Sparkles, UtensilsCrossed, AlertCircle, Carrot, Settings, Ban, Info } from 'lucide-react';
+import type { MatchedRecipe, FilterKey, ExcludedRecipe } from '@/types';
+import { DietarySettingsModal } from '@/components/DietarySettingsModal';
 
 const FILTERS: { key: FilterKey; label: string; emoji: string }[] = [
   { key: 'onePot', label: '一锅优先', emoji: '🍲' },
@@ -13,12 +14,24 @@ const FILTERS: { key: FilterKey; label: string; emoji: string }[] = [
 ];
 
 export function Recipes() {
-  const { getFilteredRecipes, getMatchedRecipes, preferences, togglePreference, stockIngredients } = useStore();
+  const {
+    getFilteredRecipes,
+    getMatchedRecipes,
+    getExcludedRecipes,
+    preferences,
+    togglePreference,
+    stockIngredients,
+    dietarySettings,
+  } = useStore();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [excludedExpandedId, setExcludedExpandedId] = useState<string | null>(null);
   const [shuffleSeed, setShuffleSeed] = useState(0);
+  const [showDietaryModal, setShowDietaryModal] = useState(false);
+  const [showExcluded, setShowExcluded] = useState(false);
 
   const filtered = getFilteredRecipes();
   const allMatched = getMatchedRecipes();
+  const excluded = getExcludedRecipes();
 
   const displayRecipes = useMemo(() => {
     if (shuffleSeed === 0) return filtered;
@@ -27,6 +40,7 @@ export function Recipes() {
   }, [filtered, shuffleSeed]);
 
   const activeFilters = Object.values(preferences).filter(Boolean).length;
+  const dietaryRestrictionsCount = dietarySettings.avoidedIngredients.length + dietarySettings.dietTypes.length;
 
   return (
     <div className="min-h-screen pb-36">
@@ -91,6 +105,43 @@ export function Recipes() {
           </div>
         </motion.div>
 
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08 }}
+          className="mb-5"
+        >
+          <button
+            onClick={() => setShowDietaryModal(true)}
+            className="w-full card p-4 flex items-center justify-between hover:shadow-float transition-all duration-300 group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center">
+                <span className="text-2xl">🥗</span>
+              </div>
+              <div className="text-left">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-gray-800">饮食偏好与忌口</span>
+                  {dietaryRestrictionsCount > 0 && (
+                    <span className="chip-red !py-0.5">
+                      {dietaryRestrictionsCount}项
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {dietaryRestrictionsCount > 0
+                    ? '已设置忌口食材和饮食类型'
+                    : '设置你的忌口和饮食类型，智能过滤菜谱'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-brand-500 text-sm font-medium group-hover:text-brand-600 transition-colors">
+              <Settings size={16} />
+              设置
+            </div>
+          </button>
+        </motion.div>
+
         {displayRecipes.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -107,6 +158,22 @@ export function Recipes() {
                     <Carrot size={18} /> 去盘点食材
                   </button>
                 </Link>
+              </>
+            ) : dietaryRestrictionsCount > 0 ? (
+              <>
+                <div className="text-6xl mb-4">🚫</div>
+                <h3 className="font-display text-xl text-gray-800 mb-2">暂无符合忌口的菜谱</h3>
+                <p className="text-sm text-gray-500 mb-5">
+                  当前有 {dietaryRestrictionsCount} 项饮食限制，试试调整忌口设置
+                </p>
+                <div className="flex gap-2 justify-center">
+                  <button
+                    onClick={() => setShowDietaryModal(true)}
+                    className="btn-primary"
+                  >
+                    <Settings size={16} /> 调整忌口
+                  </button>
+                </div>
               </>
             ) : activeFilters > 0 ? (
               <>
@@ -155,7 +222,68 @@ export function Recipes() {
             </AnimatePresence>
           </div>
         )}
+
+        {excluded.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="mt-6"
+          >
+            <button
+              onClick={() => setShowExcluded(!showExcluded)}
+              className="w-full flex items-center justify-between mb-3 group"
+            >
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+                <Ban size={16} className="text-gray-400" />
+                已排除 {excluded.length} 道菜谱
+                <span className="text-xs text-gray-400 font-normal">
+                  （因饮食限制）
+                </span>
+              </div>
+              <motion.div
+                animate={{ rotate: showExcluded ? 180 : 0 }}
+                transition={{ duration: 0.2 }}
+                className="text-gray-400"
+              >
+                <ChevronDown size={18} />
+              </motion.div>
+            </button>
+            <AnimatePresence>
+              {showExcluded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="overflow-hidden"
+                >
+                  <div className="space-y-3">
+                    {excluded.map((recipe, idx) => (
+                      <ExcludedRecipeCard
+                        key={recipe.id}
+                        recipe={recipe}
+                        index={idx}
+                        expanded={excludedExpandedId === recipe.id}
+                        onToggle={() =>
+                          setExcludedExpandedId(
+                            excludedExpandedId === recipe.id ? null : recipe.id
+                          )
+                        }
+                      />
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
       </div>
+
+      <DietarySettingsModal
+        isOpen={showDietaryModal}
+        onClose={() => setShowDietaryModal(false)}
+      />
     </div>
   );
 }
@@ -358,6 +486,148 @@ function RecipeCard({
                           <span className="text-base">{ing.emoji}</span>
                           {ing.name}
                           <span className="text-fresh-dark">✓</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+}
+
+function ExcludedRecipeCard({
+  recipe,
+  index,
+  expanded,
+  onToggle,
+}: {
+  recipe: ExcludedRecipe;
+  index: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const { matchPercentage, coverEmoji, name, description, requiredIngredients, excludedReasons, matchedIngredients, steps } = recipe;
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ delay: index * 0.03 }}
+    >
+      <div className="card overflow-hidden bg-gray-50 border border-gray-200 opacity-80">
+        <button onClick={onToggle} className="w-full text-left p-4">
+          <div className="flex gap-3">
+            <div className="relative flex-shrink-0">
+              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-3xl grayscale">
+                {coverEmoji}
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-danger rounded-full flex items-center justify-center">
+                <Ban size={10} className="text-white" />
+              </div>
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <h3 className="font-medium text-gray-600 truncate line-through">
+                  {name}
+                </h3>
+                <motion.div animate={{ rotate: expanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                  <ChevronDown size={16} className="text-gray-400 flex-shrink-0" />
+                </motion.div>
+              </div>
+              {description && (
+                <p className="text-xs text-gray-400 mb-2 line-clamp-1">{description}</p>
+              )}
+              <div className="flex flex-wrap gap-1">
+                {excludedReasons.slice(0, 2).map((reason, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-danger/10 text-danger"
+                  >
+                    <Info size={10} />
+                    {reason}
+                  </span>
+                ))}
+                {excludedReasons.length > 2 && (
+                  <span className="text-[10px] text-gray-400">
+                    +{excludedReasons.length - 2}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </button>
+
+        <AnimatePresence>
+          {expanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="overflow-hidden border-t border-gray-200"
+            >
+              <div className="p-4 pt-3 space-y-4">
+                <div className="bg-danger/5 border border-danger/20 rounded-xl p-3">
+                  <div className="flex items-center gap-1.5 text-danger text-xs font-medium mb-2">
+                    <AlertCircle size={12} />
+                    排除原因
+                  </div>
+                  <ul className="space-y-1">
+                    {excludedReasons.map((reason, i) => (
+                      <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
+                        <span className="text-danger mt-0.5">•</span>
+                        {reason}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-medium text-gray-500 mb-2">
+                    <ChefHat size={14} />
+                    烹饪步骤
+                  </div>
+                  <ol className="space-y-2">
+                    {steps.map((step, i) => (
+                      <li key={i} className="flex gap-2">
+                        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold flex items-center justify-center">
+                          {i + 1}
+                        </div>
+                        <p className="text-xs text-gray-500 pt-0.5 flex-1">{step}</p>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+
+                <div className="bg-gray-100 rounded-xl p-3">
+                  <div className="text-[10px] text-gray-400 mb-1">所需食材</div>
+                  <div className="flex flex-wrap gap-1">
+                    {requiredIngredients.map((id) => {
+                      const ing = getIngredientById(id);
+                      const matched = matchedIngredients.includes(id);
+                      const isAvoided = useStore.getState().isIngredientAvoided(id);
+                      if (!ing) return null;
+                      return (
+                        <span
+                          key={id}
+                          className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] ${
+                            isAvoided
+                              ? 'bg-danger/10 text-danger line-through'
+                              : matched
+                              ? 'bg-fresh/10 text-fresh-dark'
+                              : 'bg-gray-200 text-gray-400 line-through'
+                          }`}
+                        >
+                          <span>{ing.emoji}</span>
+                          {ing.name}
                         </span>
                       );
                     })}

@@ -9,14 +9,78 @@ import type {
   UserPreferences,
   Ingredient,
   IngredientCategory,
+  ExcludedRecipe,
+  DietarySettings,
+  DietType,
+  DietTypeInfo,
 } from '@/types';
 import { INGREDIENTS, INGREDIENT_MAP } from '@/data/ingredients';
 import { RECIPES } from '@/data/recipes';
+
+export const DIET_TYPE_LIST: DietTypeInfo[] = [
+  { key: 'vegetarian', label: '素食', emoji: '🥗', description: '不吃肉类、海鲜' },
+  { key: 'vegan', label: '纯素', emoji: '🌱', description: '不吃任何动物来源食物' },
+  { key: 'lowCarb', label: '低碳水', emoji: '🥑', description: '减少米饭、面条等主食' },
+  { key: 'lowFat', label: '低脂肪', emoji: '🥬', description: '减少高脂肪食材' },
+  { key: 'highProtein', label: '高蛋白', emoji: '💪', description: '健身减脂，优先高蛋白' },
+  { key: 'glutenFree', label: '无麸质', emoji: '🌾', description: '不吃小麦等含麸质食物' },
+];
+
+const COMMON_AVOID_CATEGORIES: { category: string; label: string; emoji: string; ingredientIds: string[] }[] = [
+  {
+    category: 'allium',
+    label: '葱姜蒜类',
+    emoji: '🧄',
+    ingredientIds: ['v-garlic', 'v-green-onion', 'se-ginger', 'v-onion'],
+  },
+  {
+    category: 'spicy',
+    label: '辛辣刺激',
+    emoji: '🌶️',
+    ingredientIds: ['v-chili', 'v-pepper', 'se-pepper'],
+  },
+  {
+    category: 'seafood',
+    label: '海鲜水产',
+    emoji: '🦐',
+    ingredientIds: ['p-shrimp', 'p-fish'],
+  },
+  {
+    category: 'dairy',
+    label: '奶制品',
+    emoji: '🥛',
+    ingredientIds: ['p-milk', 'p-cheese'],
+  },
+  {
+    category: 'meat',
+    label: '畜禽肉',
+    emoji: '🥩',
+    ingredientIds: ['p-beef', 'p-pork', 'p-chicken', 'p-bacon', 'p-sausage'],
+  },
+  {
+    category: 'egg',
+    label: '蛋类',
+    emoji: '🥚',
+    ingredientIds: ['p-egg'],
+  },
+  {
+    category: 'staple',
+    label: '主食谷物',
+    emoji: '🍚',
+    ingredientIds: ['s-rice', 's-noodle', 's-bread', 's-bun', 's-dumpling', 's-instant-noodle', 's-oat'],
+  },
+];
+
+const initialDietarySettings: DietarySettings = {
+  avoidedIngredients: [],
+  dietTypes: [],
+};
 
 interface StoreState {
   stockIngredients: StockIngredient[];
   preferences: UserPreferences;
   customIngredients: Ingredient[];
+  dietarySettings: DietarySettings;
 
   addStockIngredient: (ingredientId: string, purchaseDate?: string) => void;
   removeStockIngredient: (ingredientId: string) => void;
@@ -24,6 +88,13 @@ interface StoreState {
   updatePurchaseDate: (ingredientId: string, purchaseDate: string) => void;
   togglePreference: (key: keyof UserPreferences) => void;
   addCustomIngredient: (ingredient: Ingredient) => void;
+
+  toggleAvoidedIngredient: (ingredientId: string) => void;
+  toggleDietType: (dietType: DietType) => void;
+  isIngredientAvoided: (ingredientId: string) => boolean;
+  hasDietType: (dietType: DietType) => boolean;
+  getAvoidedIngredients: () => Ingredient[];
+  getCommonAvoidCategories: () => typeof COMMON_AVOID_CATEGORIES;
 
   getAllIngredients: () => Ingredient[];
   getIngredientsByCategory: (category: IngredientCategory) => Ingredient[];
@@ -37,6 +108,8 @@ interface StoreState {
   getStockIds: () => string[];
   getMatchedRecipes: () => MatchedRecipe[];
   getFilteredRecipes: () => MatchedRecipe[];
+  getExcludedRecipes: () => ExcludedRecipe[];
+  getRecipeExcludedReasons: (recipe: Recipe) => string[];
 }
 
 const today = () => new Date().toISOString().split('T')[0];
@@ -62,12 +135,37 @@ const initialPreferences: UserPreferences = {
   vegetarian: false,
 };
 
+const getDietTypeIngredientIds = (dietType: DietType): string[] => {
+  switch (dietType) {
+    case 'vegetarian':
+      return ['p-beef', 'p-pork', 'p-chicken', 'p-fish', 'p-shrimp', 'p-bacon', 'p-sausage'];
+    case 'vegan':
+      return ['p-egg', 'p-milk', 'p-cheese', 'p-beef', 'p-pork', 'p-chicken', 'p-fish', 'p-shrimp', 'p-bacon', 'p-sausage', 'p-tofu'];
+    case 'lowCarb':
+      return ['s-rice', 's-noodle', 's-bread', 's-bun', 's-dumpling', 's-instant-noodle', 's-oat', 's-sweet-potato', 'v-potato'];
+    case 'lowFat':
+      return ['p-bacon', 'p-sausage', 'p-pork', 'se-oil', 'p-cheese'];
+    case 'highProtein':
+      return [];
+    case 'glutenFree':
+      return ['s-noodle', 's-bread', 's-bun', 's-dumpling', 's-instant-noodle', 'se-soy', 'se-sauce'];
+    default:
+      return [];
+  }
+};
+
+const getDietTypeLabel = (dietType: DietType): string => {
+  const info = DIET_TYPE_LIST.find(d => d.key === dietType);
+  return info?.label || dietType;
+};
+
 export const useStore = create<StoreState>()(
   persist(
     (set, get) => ({
       stockIngredients: [],
       preferences: initialPreferences,
       customIngredients: [],
+      dietarySettings: initialDietarySettings,
 
       addStockIngredient: (ingredientId, purchaseDate) => {
         const base = INGREDIENT_MAP[ingredientId] ||
@@ -115,6 +213,53 @@ export const useStore = create<StoreState>()(
         set({ customIngredients: [...get().customIngredients, ingredient] });
       },
 
+      toggleAvoidedIngredient: (ingredientId) => {
+        const { avoidedIngredients } = get().dietarySettings;
+        const isAvoided = avoidedIngredients.includes(ingredientId);
+        set({
+          dietarySettings: {
+            ...get().dietarySettings,
+            avoidedIngredients: isAvoided
+              ? avoidedIngredients.filter(id => id !== ingredientId)
+              : [...avoidedIngredients, ingredientId],
+          },
+        });
+      },
+
+      toggleDietType: (dietType) => {
+        const { dietTypes } = get().dietarySettings;
+        const hasType = dietTypes.includes(dietType);
+        set({
+          dietarySettings: {
+            ...get().dietarySettings,
+            dietTypes: hasType
+              ? dietTypes.filter(d => d !== dietType)
+              : [...dietTypes, dietType],
+          },
+        });
+      },
+
+      isIngredientAvoided: (ingredientId) => {
+        const { avoidedIngredients, dietTypes } = get().dietarySettings;
+        if (avoidedIngredients.includes(ingredientId)) return true;
+        for (const dt of dietTypes) {
+          if (getDietTypeIngredientIds(dt).includes(ingredientId)) return true;
+        }
+        return false;
+      },
+
+      hasDietType: (dietType) => {
+        return get().dietarySettings.dietTypes.includes(dietType);
+      },
+
+      getAvoidedIngredients: () => {
+        const allIngredients = get().getAllIngredients();
+        const { avoidedIngredients } = get().dietarySettings;
+        return allIngredients.filter(i => avoidedIngredients.includes(i.id));
+      },
+
+      getCommonAvoidCategories: () => COMMON_AVOID_CATEGORIES,
+
       getAllIngredients: () => {
         return [...INGREDIENTS, ...get().customIngredients];
       },
@@ -154,6 +299,31 @@ export const useStore = create<StoreState>()(
         return get().stockIngredients.map((s) => s.id);
       },
 
+      getRecipeExcludedReasons: (recipe) => {
+        const reasons: string[] = [];
+        const { avoidedIngredients, dietTypes } = get().dietarySettings;
+        const allIngredients = get().getAllIngredients();
+
+        for (const ingId of recipe.requiredIngredients) {
+          if (avoidedIngredients.includes(ingId)) {
+            const ing = allIngredients.find(i => i.id === ingId);
+            if (ing) {
+              reasons.push(`含忌口食材：${ing.name}`);
+            }
+          }
+        }
+
+        for (const dt of dietTypes) {
+          const restrictedIds = getDietTypeIngredientIds(dt);
+          const hasRestricted = recipe.requiredIngredients.some(id => restrictedIds.includes(id));
+          if (hasRestricted) {
+            reasons.push(`不符合${getDietTypeLabel(dt)}饮食`);
+          }
+        }
+
+        return [...new Set(reasons)];
+      },
+
       getMatchedRecipes: () => {
         const stockIds = get().getStockIds();
         const matched: MatchedRecipe[] = [];
@@ -188,30 +358,63 @@ export const useStore = create<StoreState>()(
       },
 
       getFilteredRecipes: () => {
-        const { preferences } = get();
+        const { preferences, dietarySettings } = get();
         let recipes = get().getMatchedRecipes();
 
         const prefEntries = Object.entries(preferences) as [keyof UserPreferences, boolean][];
         const activePrefs = prefEntries.filter(([, v]) => v);
 
-        if (activePrefs.length === 0) return recipes;
+        if (activePrefs.length > 0) {
+          recipes = recipes.filter((r) =>
+            activePrefs.every(([key]) => {
+              switch (key) {
+                case 'onePot':
+                  return r.tags.onePot;
+                case 'quickMeal':
+                  return r.tags.quickMeal;
+                case 'lessDishes':
+                  return r.tags.lessDishes;
+                case 'vegetarian':
+                  return r.tags.vegetarian;
+                default:
+                  return true;
+              }
+            })
+          );
+        }
 
-        return recipes.filter((r) =>
-          activePrefs.every(([key]) => {
-            switch (key) {
-              case 'onePot':
-                return r.tags.onePot;
-              case 'quickMeal':
-                return r.tags.quickMeal;
-              case 'lessDishes':
-                return r.tags.lessDishes;
-              case 'vegetarian':
-                return r.tags.vegetarian;
-              default:
-                return true;
-            }
-          })
-        );
+        const hasDietaryRestrictions = dietarySettings.avoidedIngredients.length > 0
+          || dietarySettings.dietTypes.length > 0;
+
+        if (!hasDietaryRestrictions) return recipes;
+
+        return recipes.filter(recipe => {
+          const reasons = get().getRecipeExcludedReasons(recipe);
+          return reasons.length === 0;
+        });
+      },
+
+      getExcludedRecipes: () => {
+        const { dietarySettings } = get();
+        const hasDietaryRestrictions = dietarySettings.avoidedIngredients.length > 0
+          || dietarySettings.dietTypes.length > 0;
+
+        if (!hasDietaryRestrictions) return [];
+
+        const matched = get().getMatchedRecipes();
+        const excluded: ExcludedRecipe[] = [];
+
+        for (const recipe of matched) {
+          const reasons = get().getRecipeExcludedReasons(recipe);
+          if (reasons.length > 0) {
+            excluded.push({
+              ...recipe,
+              excludedReasons: reasons,
+            });
+          }
+        }
+
+        return excluded.sort((a, b) => b.matchPercentage - a.matchPercentage);
       },
     }),
     {
@@ -220,6 +423,7 @@ export const useStore = create<StoreState>()(
         stockIngredients: state.stockIngredients,
         preferences: state.preferences,
         customIngredients: state.customIngredients,
+        dietarySettings: state.dietarySettings,
       }),
     }
   )

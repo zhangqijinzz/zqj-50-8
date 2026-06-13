@@ -54,3 +54,30 @@ export interface UserPreferences {
 }
 
 export type FilterKey = 'onePot' | 'quickMeal' | 'lessDishes' | 'vegetarian';
+
+export type DietType =
+  | 'vegetarian'
+  | 'vegan'
+  | 'lowCarb'
+  | 'lowFat'
+  | 'highProtein'
+  | 'glutenFree';
+
+export interface DietTypeInfo {
+  key: DietType;
+  label: string;
+  emoji: string;
+  description: string;
+}
+
+export interface ExcludedRecipe extends Recipe {
+  excludedReasons: string[];
+  matchPercentage: number;
+  matchedIngredients: string[];
+  missingIngredients: string[];
+}
+
+export interface DietarySettings {
+  avoidedIngredients: string[];
+  dietTypes: DietType[];
+}
