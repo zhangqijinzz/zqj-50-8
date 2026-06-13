@@ -27,9 +27,9 @@ function getGreeting() {
 }
 
 export function Dashboard() {
-  const { stockIngredients, getStockByStatus, getFilteredRecipes, dietarySettings, preferences } = useStore();
+  const { stockIngredients, getStockByStatus, getMatchedRecipes } = useStore();
   const { urgent, warning } = getStockByStatus();
-  const matched = getFilteredRecipes();
+  const matched = getMatchedRecipes();
 
   const totalIngredients = stockIngredients.length;
   const urgentCount = urgent.length;

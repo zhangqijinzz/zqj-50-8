@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
 import { useStore, DIET_TYPE_LIST } from '@/store/useStore';
@@ -28,6 +28,15 @@ export function DietarySettingsModal({ isOpen, onClose }: DietarySettingsModalPr
   const [expandedCategory, setExpandedCategory] = useState<IngredientCategory | null>(null);
   const commonAvoidCategories = getCommonAvoidCategories();
   const allAvoidedCount = dietarySettings.avoidedIngredients.length + dietarySettings.dietTypes.length;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   const handleQuickSelect = (ingredientIds: string[]) => {
     const allSelected = ingredientIds.every(id => isIngredientAvoided(id));
